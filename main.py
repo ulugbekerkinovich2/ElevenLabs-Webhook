@@ -112,7 +112,6 @@ async def elevenlabs_webhook(request: Request):
     # Hozircha HMAC o‘chirilgan bo‘lsa, shu qatorni uncomment qilsang bo'ladi:
     # if not verify_signature(raw_body, signature):
     #     raise HTTPException(status_code=401, detail="Invalid signature")
-
     payload = await request.json()
 
     event = payload.get("event", "unknown_event")
