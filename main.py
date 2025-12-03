@@ -58,11 +58,11 @@ def format_pretty(payload: dict) -> str:
     header = f"""
 📞 *ElevenLabs Conversation Log*
 ──────────────────────────────
-🧩 *Type:* `{event_type}`
-📊 *Status:* `{status}`
+🧩 Type: `{event_type}`
+📊 Status: `{status}`
 ⏱ Event time: `{ts_str}`
 
-💬 *Transcript*
+💬 Transcript
 ──────────────────────────────
     """.strip()
 
@@ -75,9 +75,9 @@ def format_pretty(payload: dict) -> str:
         msg = item.get("message") or ""
 
         if role == "user":
-            prefix = "👤 *User:*"
+            prefix = "👤 User:"
         else:
-            prefix = "🤖 *Agent:*"
+            prefix = "🤖 Agent:"
 
         block = f"{prefix}\n{msg}\n"
         transcript_lines.append(block)
