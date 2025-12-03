@@ -58,11 +58,8 @@ def format_pretty(payload: dict) -> str:
     header = f"""
 📞 *ElevenLabs Conversation Log*
 ──────────────────────────────
-# 🧩 *Type:* `{event_type}`
+🧩 *Type:* `{event_type}`
 📊 *Status:* `{status}`
-# 🗣 *Conversation ID:* `{conv_id}`
-# 🤖 *Agent ID:* `{agent_id}`
-# 👤 *User ID:* `{user_id}`
 ⏱ Event time: `{ts_str}`
 
 💬 *Transcript*
