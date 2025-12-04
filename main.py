@@ -1,25 +1,26 @@
 import os
-import hmac
-import hashlib
 import requests
-import json
 from datetime import datetime, timezone
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request
 from dotenv import load_dotenv
+from typing import Set, Tuple
 
 app = FastAPI()
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "-")
-HMAC_SECRET = os.getenv("HMAC_SECRET", "YOUR_HMAC_SECRET").encode()
 
 TELEGRAM_SEND_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 MAX_LEN = 3900   # Telegram safe limit
 
+# Bir xil event ikki marta kelganda filtr qilish uchun
+# (conversation_id, event_timestamp) ni saqlaymiz
+SEEN_EVENTS: Set[Tuple[str, int]] = set()
+
 
 def send_to_telegram(text: str):
-    # bo‘lib yuborish
+    """Matnni Telegramga yuborish, uzun bo'lsa bo'lib-bo'lib."""
     if len(text) <= MAX_LEN:
         _send_chunk(text)
         return
@@ -32,25 +33,25 @@ def send_to_telegram(text: str):
 
 
 def _send_chunk(chunk: str):
-    requests.post(
-        TELEGRAM_SEND_URL,
-        json={"chat_id": TELEGRAM_CHAT_ID, "text": chunk},
-        timeout=10
-    )
+    try:
+        requests.post(
+            TELEGRAM_SEND_URL,
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": chunk},
+            timeout=10
+        )
+    except Exception as e:
+        # xato bo'lsa server logga yozib qo'ysan bo'ladi
+        print("Telegram send error:", e)
 
 
 def format_pretty(payload: dict) -> str:
     data = payload.get("data", {}) or {}
 
-    event_type = payload.get("type", "unknown")
-    status = data.get("status", "unknown")
-    conv_id = data.get("conversation_id", "-")
-    agent_id = data.get("agent_id", "-")
-    user_id = data.get("user_id", "-")
-
     ts = payload.get("event_timestamp")
     if isinstance(ts, (int, float)):
-        ts_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        ts_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
+            "%Y-%m-%d %H:%M:%S UTC"
+        )
     else:
         ts_str = str(ts)
 
@@ -91,9 +92,26 @@ def format_pretty(payload: dict) -> str:
 @app.post("/elevenlabs/webhook")
 async def elevenlabs_webhook(request: Request):
     payload = await request.json()
+    data = payload.get("data", {}) or {}
+
+    # Dublikatlarni filtrlash: conversation_id + event_timestamp
+    conv_id = str(data.get("conversation_id", ""))
+    ts = payload.get("event_timestamp")
+
+    try:
+        ts_int = int(ts) if isinstance(ts, (int, float, str)) and str(ts).isdigit() else 0
+    except Exception:
+        ts_int = 0
+
+    key = (conv_id, ts_int)
+
+    # Agar shu event oldin kelgan bo'lsa, Telegramga yubormaymiz
+    if key in SEEN_EVENTS:
+        return {"status": "duplicate_ignored"}
+
+    SEEN_EVENTS.add(key)
 
     pretty = format_pretty(payload)
-
     send_to_telegram(pretty)
 
     return {"status": "ok"}
