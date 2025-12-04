@@ -47,15 +47,14 @@ def _send_chunk(chunk: str):
 def format_pretty(payload: dict) -> str:
     data = payload.get("data", {}) or {}
 
+    event_type = payload.get("type", "unknown")
     ts = payload.get("event_timestamp")
     if isinstance(ts, (int, float)):
-        ts_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
-            "%Y-%m-%d %H:%M:%S UTC"
-        )
+        ts_str = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     else:
         ts_str = str(ts)
 
-    # 1) HEADER (pretty)
+    # HEADER
     header = f"""
 📞 *ElevenLabs Conversation Log*
 ──────────────────────────────
@@ -63,23 +62,55 @@ def format_pretty(payload: dict) -> str:
 ──────────────────────────────
     """.strip()
 
-    # 2) TRANSCRIPT FORMAT
-    transcript_lines = []
-    transcript_items = data.get("transcript", [])
+    # TRANSCRIPT FORMAT (bo'shlarni tashlaymiz, ketma-ket role'larni birlashtiramiz)
+    transcript_items = data.get("transcript", []) or []
+
+    dialog_blocks = []          # [(role, "msg1\n\nmsg2"), ...]
+    current_role = None
+    current_msgs: list[str] = []
 
     for item in transcript_items:
-        role = (item.get("role") or "").lower()
-        msg = item.get("message") or ""
+        role_raw = (item.get("role") or "").lower()
+        msg = (item.get("message") or "")
+        msg = msg.strip()
 
+        # bo'sh xabarlarni SKIP
+        if not msg:
+            continue
+
+        # role'ni normalize qilamiz
+        if role_raw == "user":
+            role = "user"
+        else:
+            role = "agent"
+
+        # agar oldingi bilan bir xil role bo'lsa, o'sha blokka qo'shamiz
+        if role == current_role:
+            current_msgs.append(msg)
+        else:
+            # oldingi blokni flush qilamiz
+            if current_role is not None and current_msgs:
+                dialog_blocks.append((current_role, "\n\n".join(current_msgs)))
+            # yangi blok
+            current_role = role
+            current_msgs = [msg]
+
+    # loop tugagach, oxirgi blokni ham flush
+    if current_role is not None and current_msgs:
+        dialog_blocks.append((current_role, "\n\n".join(current_msgs)))
+
+    # endi dialog_blocks'ni chiroyli qilib formatlaymiz
+    transcript_lines = []
+    for role, text in dialog_blocks:
         if role == "user":
             prefix = "👤 User:"
         else:
             prefix = "🤖 Agent:"
-
-        block = f"{prefix}\n{msg}\n"
+        block = f"{prefix}\n{text}\n"
         transcript_lines.append(block)
 
     transcript = "\n".join(transcript_lines).strip()
+
     final_text = header + "\n\n" + transcript
 
     # Juda uzun bo‘lsa, kesib yuboramiz
@@ -87,6 +118,7 @@ def format_pretty(payload: dict) -> str:
         final_text = final_text[:MAX_LEN] + "\n… (truncated)"
 
     return final_text
+
 
 
 @app.post("/elevenlabs/webhook")
